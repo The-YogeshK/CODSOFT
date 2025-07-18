@@ -1,0 +1,60 @@
+import streamlit as st
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import linear_kernel
+
+@st.cache_data
+def load_data():
+    url = "https://raw.githubusercontent.com/justmarkham/pandas-videos/master/data/imdb_1000.csv"
+    df = pd.read_csv(url)
+    df = df[['title', 'genre', 'actors_list']]
+    df['combined'] = df['genre'].fillna('') + ' ' + df['actors_list'].fillna('')
+    return df
+
+def build_model(df):
+    tfidf = TfidfVectorizer(stop_words='english')
+    tfidf_matrix = tfidf.fit_transform(df['combined'])
+    cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
+    return cosine_sim
+
+def get_recommendations(title, df, cosine_sim):
+    indices = pd.Series(df.index, index=df['title'].str.lower())
+    idx = indices.get(title.lower())
+
+    if idx is None:
+        return []
+
+    sim_scores = list(enumerate(cosine_sim[idx]))
+    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
+    sim_scores = sim_scores[1:6]  # top 5 similar
+
+    movie_indices = [i[0] for i in sim_scores]
+    return df['title'].iloc[movie_indices].tolist()
+
+def main():
+    st.set_page_config(page_title="🎬 Movie Recommender", layout="centered")
+    st.title("🎥 Movie Recommendation Engine")
+    st.markdown("##### Find movies similar to your favorite one!")
+
+    with st.spinner('Loading movie data...'):
+        df = load_data()
+        cosine_sim = build_model(df)
+
+    selected_movie = st.selectbox("Pick a movie to get recommendations:", df['title'].sort_values().unique())
+
+    if st.button("🎯 Recommend"):
+        with st.spinner("Finding similar movies..."):
+            recommendations = get_recommendations(selected_movie, df, cosine_sim)
+
+        if recommendations:
+            st.success(f"Because you like **{selected_movie}**, you might also enjoy:")
+            for i, rec in enumerate(recommendations, start=1):
+                st.write(f"{i}. 🎬 {rec}")
+        else:
+            st.warning("No recommendations found. Try a different title!")
+
+    st.markdown("---")
+   
+
+if __name__ == '__main__':
+    main()
